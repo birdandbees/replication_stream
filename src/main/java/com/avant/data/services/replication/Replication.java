@@ -3,6 +3,7 @@ import com.benfante.experiments.libpqwrapper.swig.*;
 /**
  * Created by jing on 3/30/16.
  */
+// Test class to use C library libqp
 public class Replication {
 
     int replication_slot_create(ReplicationStream stream)

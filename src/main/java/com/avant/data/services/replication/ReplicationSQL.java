@@ -5,6 +5,8 @@ package com.avant.data.services.replication;
 
 import org.apache.log4j.Logger;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class ReplicationSQL implements ChangeCaptureAdapter {
@@ -16,6 +18,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     private Pattern end;
     private java.util.Vector alertListener = new java.util.Vector();
     private ReplicationStream stream;
+    private List<String> buffer; // store previous batch in memory
 
     public void connect() throws java.sql.SQLException
     {
@@ -44,6 +47,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             start = Pattern.compile("^BEGIN");
             end = Pattern.compile("^COMMIT");
             stream = new ReplicationStream();
+            buffer = new ArrayList<String>();
         }
         catch (java.sql.SQLException e )
         {
@@ -106,29 +110,46 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         }
 
     }
-
-    public int getChanges(int numOfChanges) throws java.sql.SQLException
+    private int selectFromReplicationSlots(int numOfChanges, String sqlCommand, List<String> buffer) throws java.sql.SQLException
     {
         StringBuilder sb = new StringBuilder();
-        sb.append("select location, xid, data from pg_logical_slot_get_changes('");
+        sb.append("select location, xid, data from ");
+        sb.append(sqlCommand);
+        sb.append("('");
         sb.append(slot);
         sb.append("', NULL, ");
         sb.append(numOfChanges);
         sb.append(" )");
         ResultSet rs = Postgres.execQuery(db, sb.toString());
-        //ReplicationStream stream = new ReplicationStream();
+        if (buffer != null ) {
+            buffer.clear();
+        }
         int counter = 0;
         while (rs.next())
         {
             String location = rs.getString("location");
             int xid = rs.getInt("xid");
             String data = rs.getString("data");
-            parseChanges(stream, location, xid, data, "decoder_raw");
+            if (buffer != null) {
+                buffer.add(data);
+            }else {
+                parseChanges(stream, location, xid, data, "decoder_raw");
+            }
             counter++;
 
         }
         rs.close();
         return counter;
+
+    }
+
+    public int getChanges(int numOfChanges, boolean peek) throws java.sql.SQLException
+    {
+        if (peek)
+        {
+            selectFromReplicationSlots(numOfChanges, "pg_logical_slot_peek_changes", buffer);
+        }
+        return selectFromReplicationSlots(numOfChanges, "pg_logical_slot_get_changes", null);
     }
 
     private int parseChanges(ReplicationStream stream, String location, int xid, String data, String decoder)
@@ -136,7 +157,9 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         stream.last_xid = stream.xid;
         stream.xid = xid;
         stream.data = data;
-        if ( stream.xid - stream.last_xid > 1)
+        // for now just check if xid is continuous
+        // TODO: need to check location(LSN)
+        if ( stream.xid != 0 && stream.xid - stream.last_xid > 1)
         {
             alertAll("xid is not continuous, server may lose messages");
             logger.warn("xid is not continuous, server may lose messages: " + stream.last_xid + "-" + stream.xid);
@@ -179,7 +202,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         ReplicationSQL rSQL = new ReplicationSQL("jdbc:postgresql://localhost:5432/jtest", "postgres", null, "jtest");
         while (true)
         {
-            rSQL.getChanges(8);
+            rSQL.getChanges(8, false);
             //Thread.sleep(5);
 
         }

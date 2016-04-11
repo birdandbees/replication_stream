@@ -7,6 +7,7 @@ public interface ChangeCaptureAdapter {
 
     void connect() throws Exception;
     int getChanges(int numOfChanges, boolean peek) throws Exception;
-    void pushChanges(Stream stream);
+    void pushChanges(Stream stream, AvantProducer producer);
     void register(AlertListener al);
+    Stream getStream();
 }

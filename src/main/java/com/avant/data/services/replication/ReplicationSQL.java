@@ -17,7 +17,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     private Pattern start;
     private Pattern end;
     private java.util.Vector alertListener = new java.util.Vector();
-    private ReplicationStream stream;
+    public ReplicationStream stream;
     private List<String> buffer; // store previous batch in memory
 
     public void connect() throws java.sql.SQLException
@@ -64,9 +64,9 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
 
     public boolean isExist(String slot) throws java.sql.SQLException
     {
-        String sql = "select * from pg_replication_slots where name = \'" + slot + "\'";
+        String sql = "select * from pg_replication_slots where slot_name = \'" + slot + "\'";
         ResultSet rs = Postgres.execQuery(db, sql);
-        boolean ret = rs.first();
+        boolean ret = rs.isBeforeFirst();
         rs.close();
         return ret;
 
@@ -164,7 +164,6 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             alertAll("xid is not continuous, server may lose messages");
             logger.warn("xid is not continuous, server may lose messages: " + stream.last_xid + "-" + stream.xid);
         }
-        pushChanges(stream);
         return 0;
     }
     private int parseChanges(ReplicationStream stream, String location, int xid, String data)
@@ -183,27 +182,31 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             stream.last_lsn_start = stream.lsn_start;
             stream.last_lsn_end = stream.lsn_end;
             stream.xid = xid;
-            pushChanges(stream);
             return 0;
         }
         stream.data += data + "\n";
         return 0;
     }
 
-    public void pushChanges(Stream stream)
+    public void pushChanges(Stream stream, AvantProducer producer)
     {
-        System.out.println(stream.getStringData());
+        producer.push(stream);
     }
 
+    public Stream getStream()
+    {
+        return stream;
+    }
 
     public static void main(String[] args) throws Exception
     {
 
         ReplicationSQL rSQL = new ReplicationSQL("jdbc:postgresql://localhost:5432/jtest", "postgres", null, "jtest");
+        AvantProducer producer = new StandardOutProducer();
         while (true)
         {
             rSQL.getChanges(8, false);
-            //Thread.sleep(5);
+            rSQL.pushChanges(rSQL.stream, producer);
 
         }
     }

@@ -23,6 +23,14 @@ public class ReplicationStream implements Stream{
         xid = 0;
 
     }
+    public int getKey()
+    {
+        return xid;
+    }
+    public String getStringKey()
+    {
+        return Integer.toString(xid);
+    }
     public String getStringData()
     {
         return data;

@@ -5,5 +5,7 @@ package com.avant.data.services.replication;
  */
 public interface Stream {
     String  getStringData();
+    int getKey();
+    String getStringKey();
     Byte[] getBinaryData();
 }

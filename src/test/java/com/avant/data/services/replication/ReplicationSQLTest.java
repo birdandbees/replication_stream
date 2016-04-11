@@ -1,6 +1,7 @@
 package com.avant.data.services.replication;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import java.sql.Connection;
 import java.util.concurrent.ExecutorService;
@@ -26,7 +27,7 @@ public class ReplicationSQLTest {
             try {
                 Connection db = Postgres.connectDB("jdbc:postgresql://localhost:5432/jtest", "postgres", "");
                 StringBuilder sb = new StringBuilder();
-                for (int i = this.part_start; i <= this.part_end; i++) {
+                for (int i = this.part_start; i < this.part_end; i++) {
                     sb.delete(0, sb.length());
                     sb.append("insert into test_table (key, value) values (");
                     sb.append(i);
@@ -47,13 +48,14 @@ public class ReplicationSQLTest {
     public void setup() throws java.sql.SQLException, java.lang.ClassNotFoundException
     {
         Connection db = Postgres.connectDB("jdbc:postgresql://localhost:5432/jtest", "postgres", "");
-        String sql = "drop table test_table";
+        String sql = "drop table if exists test_table";
         Postgres.execUpdate(db, sql);
         sql = "create table if not exists test_table( key integer primary key, value text )";
         Postgres.execUpdate(db, sql);
         db.close();
     }
 
+    @Ignore
     @Test
     public void stressTestReplicationStream() throws Exception
     {
@@ -67,10 +69,12 @@ public class ReplicationSQLTest {
 
         ReplicationSQL rSQL = new ReplicationSQL("jdbc:postgresql://localhost:5432/jtest", "postgres", null, "jtest2");
         rSQL.register(new PrintAlert());
+        AvantProducer producer = new StandardOutProducer();
         int counter = 0;
         int loop = 0;
         while(true) {
             counter += rSQL.getChanges(8, false);
+            rSQL.pushChanges(rSQL.stream, producer);
             loop++;
             if( counter == 100000 ) break;
             if( loop > 20000000 ) break; // set an easy timeout

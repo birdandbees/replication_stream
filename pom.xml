@@ -7,6 +7,14 @@
     <groupId>postgres-replication</groupId>
     <artifactId>avant-streaming</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <repositories>
+        <repository>
+            <id>mapr-maven</id>
+            <url>http://repository.mapr.com/maven</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
     <dependencies>
     <dependency>
         <groupId>org.postgresql</groupId>
@@ -31,7 +39,8 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <version>0.9.0.0</version>
+            <version>0.9.0.0-mapr-1602</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>

@@ -18,7 +18,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     private Pattern end;
     private java.util.Vector alertListener = new java.util.Vector();
     public ReplicationStream stream;
-    private List<String> buffer; // store previous batch in memory
+    private List<Message> buffer; // store previous batch in memory
 
     public void connect() throws java.sql.SQLException
     {
@@ -47,7 +47,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             start = Pattern.compile("^BEGIN");
             end = Pattern.compile("^COMMIT");
             stream = new ReplicationStream();
-            buffer = new ArrayList<String>();
+            buffer = new ArrayList<>();
         }
         catch (java.sql.SQLException e )
         {
@@ -86,8 +86,9 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         }
         catch (java.sql.SQLException e)
         {
-            logger.warn("error creating replication slot");
-            logger.warn(e.getMessage());
+            logger.fatal("error creating replication slot");
+            logger.fatal(e.getMessage());
+            System.exit(1);
         }
 
 
@@ -110,7 +111,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         }
 
     }
-    private int selectFromReplicationSlots(int numOfChanges, String sqlCommand, List<String> buffer) throws java.sql.SQLException
+    private int selectFromReplicationSlots(int numOfChanges, String sqlCommand, List<Message> buffer) throws java.sql.SQLException
     {
         StringBuilder sb = new StringBuilder();
         sb.append("select location, xid, data from ");
@@ -130,11 +131,8 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             String location = rs.getString("location");
             int xid = rs.getInt("xid");
             String data = rs.getString("data");
-            if (buffer != null) {
-                buffer.add(data);
-            }else {
-                parseChanges(stream, location, xid, data, "decoder_raw");
-            }
+            Message final_data = parseChanges(stream, location, xid, data, "decoder_raw");
+            buffer.add(final_data);
             counter++;
 
         }
@@ -149,14 +147,16 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         {
             selectFromReplicationSlots(numOfChanges, "pg_logical_slot_peek_changes", buffer);
         }
-        return selectFromReplicationSlots(numOfChanges, "pg_logical_slot_get_changes", null);
+        return selectFromReplicationSlots(numOfChanges, "pg_logical_slot_get_changes", stream.data);
     }
 
-    private int parseChanges(ReplicationStream stream, String location, int xid, String data, String decoder)
+    private Message parseChanges(ReplicationStream stream, String location, int xid, String data, String decoder)
     {
         stream.last_xid = stream.xid;
         stream.xid = xid;
-        stream.data = data;
+        Message result = new Message();
+        result.key = xid;
+        result.content = data;
         // for now just check if xid is continuous
         // TODO: need to check location(LSN)
         if ( stream.xid != 0 && stream.xid - stream.last_xid > 1)
@@ -164,17 +164,17 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             alertAll("xid is not continuous, server may lose messages");
             logger.warn("xid is not continuous, server may lose messages: " + stream.last_xid + "-" + stream.xid);
         }
-        return 0;
+        return result;
     }
-    private int parseChanges(ReplicationStream stream, String location, int xid, String data)
+    private Message parseChanges(ReplicationStream stream, String location, int xid, String data)
     {
+        Message result = new Message();
         if ( start.matcher(data).find())
         {
             stream.lsn_start = location;
             stream.last_xid = stream.xid;
             stream.xid = xid;
-            stream.data = "";
-            return 0;
+            return result;
         }
         if ( end.matcher(data).find())
         {
@@ -182,15 +182,17 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             stream.last_lsn_start = stream.lsn_start;
             stream.last_lsn_end = stream.lsn_end;
             stream.xid = xid;
-            return 0;
+            return result;
         }
-        stream.data += data + "\n";
-        return 0;
+        result.key = xid;
+        result.content = data;
+        return result;
     }
 
     public void pushChanges(Stream stream, AvantProducer producer)
     {
-        producer.push(stream);
+            producer.push(stream);
+            stream.clearStringData();
     }
 
     public Stream getStream()

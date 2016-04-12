@@ -8,7 +8,7 @@ public class App {
     {
 
         try {
-            ChangeCaptureAdapter postgresAdapter = new ReplicationSQL("jdbc:postgresql://localhost:5432/water", "postgres", null, "jtest");
+            ChangeCaptureAdapter postgresAdapter = new ReplicationSQL("jdbc:postgresql://localhost:5432/jtest", "postgres", null, "jjjtest");
             postgresAdapter.connect();
             AlertListener printAlert = new PrintAlert();
             postgresAdapter.register(printAlert);
@@ -17,14 +17,16 @@ public class App {
             while (true)
             {
 
-                postgresAdapter.getChanges(8, false);
-                counter += 8;
+                int changes = postgresAdapter.getChanges(8, false);
+                counter += changes;
                 if ( counter % 100 == 0 )
                 {
                     producer.flush();
 
                 }
-                postgresAdapter.pushChanges(postgresAdapter.getStream(), producer);
+                if ( changes > 0 ) {
+                    postgresAdapter.pushChanges(postgresAdapter.getStream(), producer);
+                }
             }
 
             //producer.close();

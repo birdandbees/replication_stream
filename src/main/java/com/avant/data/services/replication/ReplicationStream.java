@@ -1,6 +1,7 @@
 package com.avant.data.services.replication;
 
-import com.benfante.experiments.libpqwrapper.swig.SWIGTYPE_p_pg_conn;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by jing on 3/30/16.
@@ -12,28 +13,19 @@ public class ReplicationStream implements Stream{
     String last_lsn_end;
     String lsn_start;
     String lsn_end;
-    String data;
-    String connString;
-    SWIGTYPE_p_pg_conn conn;
-    int status;
+    List<Message> data;
 
     public ReplicationStream()
     {
         last_xid = 0;
         xid = 0;
+        data = new ArrayList<>();
 
     }
-    public int getKey()
+    public Message[] getStringData()
     {
-        return xid;
-    }
-    public String getStringKey()
-    {
-        return Integer.toString(xid);
-    }
-    public String getStringData()
-    {
-        return data;
+        return data.toArray(new Message[0]);
     }
     public Byte[] getBinaryData() { return null; };
+    public void clearStringData() { data.clear();};
 }

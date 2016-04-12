@@ -23,7 +23,6 @@ public class KafkaProducer implements AvantProducer{
     public KafkaProducer(String streamName, String filter)
     {
 
-        //Producer<String, String> producer;
         try {
             InputStream props = Resources.getResource("producer.props").openStream();
             Properties properties = new Properties();
@@ -60,23 +59,25 @@ public class KafkaProducer implements AvantProducer{
         return topic;
     }
 
-    private void send(String message, String key)
+    private void send(Message message)
     {
-        String topic = extractTopic(message);
+        String topic = extractTopic(message.content);
 
         if (topic != null )
         {
             producer.send(new ProducerRecord<String, String>(
                     maprStream + ":" + topic,
-                    topic + key,
-                    String.format("{\"type\":\"%s\", \"t\":%.3f}", message, System.nanoTime() * 1e-9)));
+                    topic + Integer.toString(message.key),
+                    String.format("{\"type\":\"%s\", \"t\":%.3f}", message.content, System.nanoTime() * 1e-9)));
         }
 
     }
 
     public void push(Stream stream)
     {
-        send(stream.getStringData(), stream.getStringKey());
+        for (Message message: stream.getStringData()) {
+            send(message);
+        }
 
     }
 

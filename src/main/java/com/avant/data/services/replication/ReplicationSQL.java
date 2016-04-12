@@ -77,11 +77,11 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     {
         try {
             StringBuilder sb = new StringBuilder();
-            sb.append("select pg_create_logical_replication_slot \\(slot_name ");
+            sb.append("select pg_create_logical_replication_slot (slot_name \'");
             sb.append(slot);
-            sb.append(", ");
-            sb.append(plugin);
-            sb.append(" \\)");
+            sb.append("\', plugin \'");
+            sb.append(plugin );
+            sb.append("\' )");
             Postgres.execUpdate(db, sb.toString());
         }
         catch (java.sql.SQLException e)

@@ -4,13 +4,15 @@
 package com.avant.data.services.replication;
 
 import org.apache.log4j.Logger;
-import java.sql.*;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
 public class ReplicationSQL implements ChangeCaptureAdapter {
-    final static Logger logger = Logger.getLogger(ReplicationSQL.class);
+    private final static Logger logger = Logger.getLogger(ReplicationSQL.class);
 
     private Connection db;
     private String slot;
@@ -20,27 +22,23 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     public ReplicationStream stream;
     private List<Message> buffer; // store previous batch in memory
 
-    public void connect() throws java.sql.SQLException
-    {
-        if  ( !isExist(slot) )
-        {
+    public void connect() throws java.sql.SQLException {
+        if (!isExist(slot)) {
             createReplicationSlot("decode_raw");
         }
     }
 
     // implement a listener to publish alerts
-    public void register(AlertListener al)
-    {
+    public void register(AlertListener al) {
         alertListener.add(al);
     }
 
-    public void alertAll( String messages ) {
-        for (java.util.Enumeration e=alertListener.elements(); e.hasMoreElements(); )
-            ((AlertListener)e.nextElement()).alert(messages);
+    public void alertAll(String messages) {
+        for (java.util.Enumeration e = alertListener.elements(); e.hasMoreElements(); )
+            ((AlertListener) e.nextElement()).alert(messages);
     }
 
-    public ReplicationSQL(String url, String username, String pass, String slot) throws ServerInterruptedException
-    {
+    public ReplicationSQL(String url, String username, String pass, String slot) throws ServerInterruptedException {
         try {
             db = Postgres.connectDB(url, username, pass);
             this.slot = slot;
@@ -48,22 +46,17 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             end = Pattern.compile("^COMMIT");
             stream = new ReplicationStream();
             buffer = new ArrayList<>();
-        }
-        catch (java.sql.SQLException e )
-        {
+        } catch (java.sql.SQLException e) {
             logger.warn(e.getMessage());
             throw new ServerInterruptedException("DB connection error");
-        }
-        catch (java.lang.ClassNotFoundException e)
-        {
+        } catch (java.lang.ClassNotFoundException e) {
             logger.warn(e.getMessage());
             throw new ServerInterruptedException("Postgres jdbc driver is not found");
         }
 
     }
 
-    public boolean isExist(String slot) throws java.sql.SQLException
-    {
+    public boolean isExist(String slot) throws java.sql.SQLException {
         String sql = "select * from pg_replication_slots where slot_name = \'" + slot + "\'";
         ResultSet rs = Postgres.execQuery(db, sql);
         boolean ret = rs.isBeforeFirst();
@@ -73,19 +66,16 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     }
 
 
-    public void createReplicationSlot(String plugin)
-    {
+    public void createReplicationSlot(String plugin) {
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("select pg_create_logical_replication_slot (\'");
             sb.append(slot);
             sb.append("\', \'");
-            sb.append(plugin );
+            sb.append(plugin);
             sb.append("\' )");
             Postgres.execUpdate(db, sb.toString());
-        }
-        catch (java.sql.SQLException e)
-        {
+        } catch (java.sql.SQLException e) {
             logger.fatal("error creating replication slot");
             logger.fatal(e.getMessage());
             System.exit(1);
@@ -94,25 +84,22 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
 
     }
 
-    public void dropReplicationSlot()
-    {
+    public void dropReplicationSlot() {
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("drop pg_drop_logical_replication_slot \\(slot_name ");
             sb.append(slot);
             sb.append(" \\)");
             Postgres.execUpdate(db, sb.toString());
-        }
-        catch (java.sql.SQLException e)
-        {
+        } catch (java.sql.SQLException e) {
             logger.warn("error dropping replication slot");
             logger.warn(e.getMessage());
 
         }
 
     }
-    private int selectFromReplicationSlots(int numOfChanges, String sqlCommand, List<Message> buffer) throws java.sql.SQLException
-    {
+
+    private int selectFromReplicationSlots(int numOfChanges, String sqlCommand, List<Message> buffer) throws java.sql.SQLException {
         StringBuilder sb = new StringBuilder();
         sb.append("select location, xid, data from ");
         sb.append(sqlCommand);
@@ -122,12 +109,11 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         sb.append(numOfChanges);
         sb.append(" )");
         ResultSet rs = Postgres.execQuery(db, sb.toString());
-        if (buffer != null ) {
+        if (buffer != null) {
             buffer.clear();
         }
         int counter = 0;
-        while (rs.next())
-        {
+        while (rs.next()) {
             String location = rs.getString("location");
             int xid = rs.getInt("xid");
             String data = rs.getString("data");
@@ -141,17 +127,14 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
 
     }
 
-    public int getChanges(int numOfChanges, boolean peek) throws java.sql.SQLException
-    {
-        if (peek)
-        {
+    public int getChanges(int numOfChanges, boolean peek) throws java.sql.SQLException {
+        if (peek) {
             selectFromReplicationSlots(numOfChanges, "pg_logical_slot_peek_changes", buffer);
         }
         return selectFromReplicationSlots(numOfChanges, "pg_logical_slot_get_changes", stream.data);
     }
 
-    private Message parseChanges(ReplicationStream stream, String location, int xid, String data, String decoder)
-    {
+    private Message parseChanges(ReplicationStream stream, String location, int xid, String data, String decoder) {
         stream.last_xid = stream.xid;
         stream.xid = xid;
         Message result = new Message();
@@ -159,25 +142,22 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         result.content = data;
         // for now just check if xid is continuous
         // TODO: need to check location(LSN)
-        if ( stream.xid != 0 && stream.xid - stream.last_xid > 1)
-        {
+        if (stream.xid != 0 && stream.xid - stream.last_xid > 1) {
             alertAll("xid is not continuous, server may lose messages");
             logger.warn("xid is not continuous, server may lose messages: " + stream.last_xid + "-" + stream.xid);
         }
         return result;
     }
-    private Message parseChanges(ReplicationStream stream, String location, int xid, String data)
-    {
+
+    private Message parseChanges(ReplicationStream stream, String location, int xid, String data) {
         Message result = new Message();
-        if ( start.matcher(data).find())
-        {
+        if (start.matcher(data).find()) {
             stream.lsn_start = location;
             stream.last_xid = stream.xid;
             stream.xid = xid;
             return result;
         }
-        if ( end.matcher(data).find())
-        {
+        if (end.matcher(data).find()) {
             stream.lsn_end = location;
             stream.last_lsn_start = stream.lsn_start;
             stream.last_lsn_end = stream.lsn_end;
@@ -189,24 +169,20 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         return result;
     }
 
-    public void pushChanges(Stream stream, AvantProducer producer)
-    {
-            producer.push(stream);
-            stream.clearStringData();
+    public void pushChanges(Stream stream, AvantProducer producer) {
+        producer.push(stream);
+        stream.clearStringData();
     }
 
-    public Stream getStream()
-    {
+    public Stream getStream() {
         return stream;
     }
 
-    public static void main(String[] args) throws Exception
-    {
+    public static void main(String[] args) throws Exception {
 
         ReplicationSQL rSQL = new ReplicationSQL("jdbc:postgresql://localhost:5432/jtest", "postgres", null, "jtest");
         AvantProducer producer = new StandardOutProducer();
-        while (true)
-        {
+        while (true) {
             rSQL.getChanges(8, false);
             rSQL.pushChanges(rSQL.stream, producer);
 

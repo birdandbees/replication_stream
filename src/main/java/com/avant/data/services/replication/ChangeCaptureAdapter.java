@@ -6,8 +6,12 @@ package com.avant.data.services.replication;
 public interface ChangeCaptureAdapter {
 
     void connect() throws Exception;
+
     int getChanges(int numOfChanges, boolean peek) throws Exception;
+
     void pushChanges(Stream stream, AvantProducer producer);
+
     void register(AlertListener al);
+
     Stream getStream();
 }

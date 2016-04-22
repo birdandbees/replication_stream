@@ -9,11 +9,8 @@ import java.util.List;
 public class ReplicationStream implements Stream {
     int last_xid;
     int xid;
-    String last_lsn_start;
-    String last_lsn_end;
-    String lsn_start;
-    String lsn_end;
     List<Message> data;
+    String plugin_name;
 
     public ReplicationStream() {
         last_xid = 0;

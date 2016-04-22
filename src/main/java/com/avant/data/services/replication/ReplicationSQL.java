@@ -24,7 +24,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
 
     public void connect() throws java.sql.SQLException {
         if (!isExist(slot)) {
-            createReplicationSlot("decode_raw");
+            createReplicationSlot("wal2json");
         }
     }
 
@@ -57,10 +57,18 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
     }
 
     public boolean isExist(String slot) throws java.sql.SQLException {
-        String sql = "select * from pg_replication_slots where slot_name = \'" + slot + "\'";
+        String sql = "select plugin, catalog_xmin from pg_replication_slots where slot_name = \'" + slot + "\'";
         ResultSet rs = Postgres.execQuery(db, sql);
         boolean ret = rs.isBeforeFirst();
         rs.close();
+        if ( ret )
+        {
+            while (rs.next())
+            {
+                stream.plugin_name = rs.getString("plugin");
+                stream.last_xid = rs.getInt("catalog_xmin");
+            }
+        }
         return ret;
 
     }
@@ -68,6 +76,7 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
 
     public void createReplicationSlot(String plugin) {
         try {
+            stream.plugin_name = plugin;
             StringBuilder sb = new StringBuilder();
             sb.append("select pg_create_logical_replication_slot (\'");
             sb.append(slot);
@@ -117,10 +126,9 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
             String location = rs.getString("location");
             int xid = rs.getInt("xid");
             String data = rs.getString("data");
-            Message final_data = parseChanges(stream, location, xid, data, "decoder_raw");
+            Message final_data = parseChanges(stream, location, xid, data);
             buffer.add(final_data);
             counter++;
-
         }
         rs.close();
         return counter;
@@ -134,7 +142,8 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         return selectFromReplicationSlots(numOfChanges, "pg_logical_slot_get_changes", stream.data);
     }
 
-    private Message parseChanges(ReplicationStream stream, String location, int xid, String data, String decoder) {
+    private Message parseRawChanges(ReplicationStream stream, String location, int xid, String data)
+    {
         stream.last_xid = stream.xid;
         stream.xid = xid;
         Message result = new Message();
@@ -142,31 +151,53 @@ public class ReplicationSQL implements ChangeCaptureAdapter {
         result.content = data;
         // for now just check if xid is continuous
         // TODO: need to check location(LSN)
-        if (stream.xid != 0 && stream.xid - stream.last_xid > 1) {
+        if (stream.xid != 0 && stream.xid - stream.last_xid > 1 && !recoverMessageFromBuffer(stream.last_xid, stream.xid)) {
             alertAll("xid is not continuous, server may lose messages");
             logger.warn("xid is not continuous, server may lose messages: " + stream.last_xid + "-" + stream.xid);
         }
         return result;
+
     }
 
-    private Message parseChanges(ReplicationStream stream, String location, int xid, String data) {
+    private boolean recoverMessageFromBuffer(int last_xid, int xid)
+    {
+        boolean rescued = false;
+        for (Message message : buffer)
+        {
+            if (message.key > last_xid && message.key < xid)
+            {
+                rescued = true;
+                stream.data.add(message);
+            }
+        }
+
+        return rescued;
+    }
+
+    private Message parseJsonChanges(ReplicationStream stream, String location, int xid, String data)
+    {
+        // no buffer rescue for json messages for now
+        // since json messages are multi-rowed
+        stream.last_xid = stream.xid;
+        stream.xid = xid;
         Message result = new Message();
-        if (start.matcher(data).find()) {
-            stream.lsn_start = location;
-            stream.last_xid = stream.xid;
-            stream.xid = xid;
-            return result;
-        }
-        if (end.matcher(data).find()) {
-            stream.lsn_end = location;
-            stream.last_lsn_start = stream.lsn_start;
-            stream.last_lsn_end = stream.lsn_end;
-            stream.xid = xid;
-            return result;
-        }
         result.key = xid;
         result.content = data;
         return result;
+    }
+
+    private Message parseChanges(ReplicationStream stream, String location, int xid, String data) {
+        if (stream.plugin_name.compareTo("decoder_raw") == 0 )
+        {
+            return parseRawChanges(stream, location, xid, data);
+        }
+
+        if(stream.plugin_name.compareTo("wal2json") == 0)
+        {
+            return parseJsonChanges(stream, location, xid, data);
+        }
+
+        return null;
     }
 
     public void pushChanges(Stream stream, AvantProducer producer) {

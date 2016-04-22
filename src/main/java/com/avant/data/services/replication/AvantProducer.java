@@ -6,4 +6,6 @@ package com.avant.data.services.replication;
 public interface AvantProducer {
 
     void push(Stream stream);
+    void flush();
+    void close();
 }

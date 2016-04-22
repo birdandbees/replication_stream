@@ -13,7 +13,7 @@ public class App {
             postgresAdapter.connect();
             AlertListener printAlert = new PrintAlert();
             postgresAdapter.register(printAlert);
-            KafkaProducer producer = new KafkaProducer("test", null);
+            AvantProducer producer = new KafkaJsonProducer("test", null);
             int counter = 0;
             while (true) {
 
